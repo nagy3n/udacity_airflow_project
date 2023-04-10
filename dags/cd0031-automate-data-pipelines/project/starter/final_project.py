@@ -9,10 +9,13 @@ from final_project_operators.load_dimension import LoadDimensionOperator
 from final_project_operators.data_quality import DataQualityOperator
 from udacity.common import final_project_sql_statements
 
-
 default_args = {
     'owner': 'nagy',
     'start_date': pendulum.now(),
+    'depends_on_past': True,
+    'retries': 3,
+    'retry_delay': timedelta(hours=1),
+    'catchup': False
 }
 
 S3_BUCKET_NAME = 'udacity-dend'
@@ -21,13 +24,13 @@ REGION = 'us-west-2'
 AWS_CREDENTIALS_ID = 'aws_nagy'
 REDSHIFT_CONN_ID = 'redshift_nagy'
 
+
 @dag(
     default_args=default_args,
     description='Load and transform data in Redshift with Airflow',
     schedule_interval='0 * * * *'
 )
 def final_project():
-
     start_operator = DummyOperator(task_id='Begin_execution')
 
     stage_events_to_redshift = StageToRedshiftOperator(
@@ -94,7 +97,15 @@ def final_project():
     run_quality_checks = DataQualityOperator(
         task_id='Run_data_quality_checks',
         redshift_conn_id=REDSHIFT_CONN_ID,
-        tables=["time","artists","songs","users","songplays"]
+        dq_checks=[
+            {'check_sql': 'SELECT COUNT(*) FROM "time"', 'invalid_result': 0, 'is_not': True},
+            {'check_sql': 'SELECT COUNT(*) FROM "artists"', 'invalid_result': 0, 'is_not': True},
+            {'check_sql': 'SELECT COUNT(*) FROM "songs"', 'invalid_result': 0, 'is_not': True},
+            {'check_sql': 'SELECT COUNT(*) FROM "users"', 'invalid_result': 0, 'is_not': True},
+            {'check_sql': 'SELECT COUNT(*) FROM "songplays"', 'invalid_result': 0, 'is_not': True},
+            {'check_sql': 'SELECT COUNT(*) FROM "users" WHERE userid is null', 'expected_result': 0, 'is_not': False},
+            {'check_sql': 'SELECT COUNT(*) FROM "songs" WHERE songid is null', 'expected_result': 0, 'is_not': False},
+        ]
     )
 
     end_operator = DummyOperator(task_id='Stop_execution')
